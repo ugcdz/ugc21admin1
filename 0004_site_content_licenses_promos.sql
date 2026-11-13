@@ -1,0 +1,15 @@
+ALTER TABLE public.sites ADD COLUMN purpose text NOT NULL DEFAULT 'apps';
+ALTER TABLE public.apps ADD COLUMN content_type text NOT NULL DEFAULT 'app';
+CREATE TABLE public.license_requests (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL, app_id uuid NOT NULL REFERENCES public.apps(id) ON DELETE CASCADE, requester_name text NOT NULL, contact text NOT NULL, status text NOT NULL DEFAULT 'pending', license_code text, created_at timestamptz NOT NULL DEFAULT now(), decided_at timestamptz);
+GRANT SELECT, UPDATE, DELETE ON public.license_requests TO authenticated;
+GRANT ALL ON public.license_requests TO service_role;
+ALTER TABLE public.license_requests ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "owner license requests" ON public.license_requests FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+CREATE TABLE public.promo_codes (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL DEFAULT auth.uid(), site_id uuid NOT NULL REFERENCES public.sites(id) ON DELETE CASCADE, code text NOT NULL, discount_percent numeric NOT NULL CHECK (discount_percent > 0 AND discount_percent <= 100), max_uses integer NOT NULL CHECK (max_uses > 0), used_count integer NOT NULL DEFAULT 0 CHECK (used_count >= 0), active boolean NOT NULL DEFAULT true, created_at timestamptz NOT NULL DEFAULT now(), UNIQUE(site_id, code));
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.promo_codes TO authenticated;
+GRANT ALL ON public.promo_codes TO service_role;
+ALTER TABLE public.promo_codes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "owner promo codes" ON public.promo_codes FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid() AND EXISTS (SELECT 1 FROM public.sites s WHERE s.id = site_id AND s.user_id = auth.uid()));
+CREATE FUNCTION public.consume_promo(_site_id uuid, _code text) RETURNS numeric LANGUAGE plpgsql SECURITY INVOKER SET search_path = public AS $$ DECLARE discount numeric; BEGIN UPDATE public.promo_codes SET used_count = used_count + 1 WHERE site_id = _site_id AND code = upper(trim(_code)) AND active AND used_count < max_uses AND user_id = auth.uid() RETURNING discount_percent INTO discount; IF discount IS NULL THEN RAISE EXCEPTION 'Code unavailable'; END IF; RETURN discount; END; $$;
+REVOKE ALL ON FUNCTION public.consume_promo(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.consume_promo(uuid,text) TO authenticated;

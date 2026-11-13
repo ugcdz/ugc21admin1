@@ -1,0 +1,3 @@
+ALTER TABLE public.sites ADD COLUMN github_repo text, ADD COLUMN github_branch text NOT NULL DEFAULT 'main', ADD COLUMN catalog_path text NOT NULL DEFAULT 'public/ugc-apps.json', ADD COLUMN synced_at timestamptz;
+ALTER TABLE public.apps ADD COLUMN file_path text, ADD COLUMN file_name text;
+CREATE POLICY "own application files" ON storage.objects FOR ALL TO authenticated USING (bucket_id = 'app-files' AND (storage.foldername(name))[1] = auth.uid()::text) WITH CHECK (bucket_id = 'app-files' AND (storage.foldername(name))[1] = auth.uid()::text);

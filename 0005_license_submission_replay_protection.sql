@@ -1,0 +1,1 @@
+ALTER TABLE public.license_requests ADD COLUMN submission_nonce uuid UNIQUE;
